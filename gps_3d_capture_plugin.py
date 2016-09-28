@@ -27,7 +27,9 @@ import resources
 # Import the code for the dialog
 from gps_3d_capture_plugin_dialog import GPS3DCapturePluginDialog
 import os.path
-
+import sys
+sys.path.append("C:\Program Files (x86)\JetBrains\PyCharm 5.0.4\debug-eggs\pycharm-debug.egg")
+import pydevd
 
 class GPS3DCapturePlugin:
     """QGIS Plugin Implementation."""
@@ -44,6 +46,9 @@ class GPS3DCapturePlugin:
         self.iface = iface
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
+
+        pydevd.settrace('localhost',port=54100,stdoutToServer=True,stderrToServer=True)
+
         # initialize locale
         locale = QSettings().value('locale/userLocale')[0:2]
         locale_path = os.path.join(
