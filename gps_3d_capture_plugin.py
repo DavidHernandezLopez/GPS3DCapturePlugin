@@ -47,7 +47,7 @@ class GPS3DCapturePlugin:
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
 
-        pydevd.settrace('localhost',port=54100,stdoutToServer=True,stderrToServer=True)
+        #pydevd.settrace('localhost',port=54100,stdoutToServer=True,stderrToServer=True)
 
         # initialize locale
         locale = QSettings().value('locale/userLocale')[0:2]
