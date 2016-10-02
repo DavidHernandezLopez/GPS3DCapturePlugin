@@ -30,7 +30,9 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
 from qgis.gui import QgsGenericProjectionSelector
-from qgis.core import QgsApplication
+from qgis.core import QgsApplication,QgsCoordinateReferenceSystem
+
+from gps_3d_capture_plugin_save_point_dialog import * #panel nueva camara
 
 import constants
 
@@ -39,7 +41,9 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 
 class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
-    def __init__(self, parent=None):
+    def __init__(self,
+                 iface,
+                 parent=None):
         """Constructor."""
         super(GPS3DCapturePluginDialog, self).__init__(parent)
         # Set up the user interface from Designer.
@@ -48,10 +52,34 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.iface = iface
         self.initialize()
 
     def initialize(self):
-        self.path = QDir.currentPath()
+        aux_path_plugin = 'python/plugins/' + constants.CONST_GPS_3D_CAPTURE_PLUGIN_NAME
+        self.path_plugin = os.path.join(QtCore.QFileInfo(QgsApplication.qgisUserDbFilePath()).path(),aux_path_plugin)
+        path_file_qsettings = self.path_plugin + '/' +constants.CONST_GPS_3D_CAPTURE_SETTINGS_FILE_NAME
+        self.settings = QtCore.QSettings(path_file_qsettings,QtCore.QSettings.IniFormat)
+        self.path = self.settings.value("last_path")
+        if not self.path:
+            self.path = QDir.currentPath()
+            self.settings.setValue("last_path",self.path)
+            self.settings.sync()
+        self.crsAuthId=self.settings.value("crsAuthId")
+        if not self.crsAuthId:
+            self.crsAuthId = self.iface.mapCanvas().mapRenderer().destinationCrs().authid()
+            self.settings.setValue("crsAuthId",self.crsAuthId)
+            self.settings.sync()
+        self.crs=QgsCoordinateReferenceSystem()
+        self.crs.createFromUserInput(self.crsAuthId)
+        if self.crs.geographicFlag():
+            self.firstCoordinateFieldCheckBox.setText("Longitude")
+            self.secondCoordinateFieldCheckBox.setText("Latitude")
+        else:
+            self.firstCoordinateFieldCheckBox.setText("Easting")
+            self.secondCoordinateFieldCheckBox.setText("Northing")
+        self.iface.mapCanvas().mapRenderer().setProjectionsEnabled(True)
+        self.crsLineEdit.setText(self.crsAuthId)
         self.initializeGeoidComboBox()
         self.savePointPushButton.setEnabled(False)
         self.finishPushButton.setEnabled(False)
@@ -96,14 +124,35 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
             self.geoidComboBox.addItem(geoidFileInfo.baseName())
 
     def savePoint(self):
-        yo=1
+        fileName=self.csvFileLineEdit.text()
+        dlg = GPS3DCapturePluginSavePointDialog(self.iface,
+                                                fileName,
+                                                self.crs,
+                                                self.nameFieldCheckBox.isChecked(),
+                                                self.numberFieldCheckBox.isChecked(),
+                                                self.codeFieldCheckBox.isChecked(),
+                                                self.heightFieldCheckBox.isChecked(),
+                                                self.geoidCheckBox.isChecked(),
+                                                self.geoidComboBox.currentText())
+        dlg.show() # show the dialog
+        result = dlg.exec_() # Run the dialog
 
     def selectCrs(self):
         projSelector = QgsGenericProjectionSelector()
-        projSelector.exec_()
-        crsId=projSelector.selectedCrsId()
-        crsAuthId=projSelector.selectedAuthId()
-        self.crsLineEdit.setText(crsAuthId)
+        ret = projSelector.exec_()
+        if ret == 1: #QMessageBox.Ok:
+            crsId=projSelector.selectedCrsId()
+            self.crsAuthId=projSelector.selectedAuthId()
+            self.crsLineEdit.setText(self.crsAuthId)
+            self.crs.createFromUserInput(self.crsAuthId)
+            if self.crs.geographicFlag():
+                self.firstCoordinateFieldCheckBox.setText("Longitude")
+                self.secondCoordinateFieldCheckBox.setText("Latitude")
+            else:
+                self.firstCoordinateFieldCheckBox.setText("Easting")
+                self.secondCoordinateFieldCheckBox.setText("Northing")
+            self.settings.setValue("crsAuthId",self.crsAuthId)
+            self.settings.sync()
 
     def selectCsvFile(self):
         oldFileName=self.csvFileLineEdit.text()
@@ -114,6 +163,8 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
             fileInfo = QFileInfo(fileName)
             self.path=fileInfo.absolutePath()
             self.csvFileLineEdit.setText(fileName)
+            self.settings.setValue("last_path",self.path)
+            self.settings.sync()
 
     def startProcess(self):
         fileName=self.csvFileLineEdit.text()

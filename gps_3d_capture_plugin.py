@@ -64,7 +64,7 @@ class GPS3DCapturePlugin:
                 QCoreApplication.installTranslator(self.translator)
 
         # Create the dialog (after translation) and keep reference
-        self.dlg = GPS3DCapturePluginDialog()
+        self.dlg = GPS3DCapturePluginDialog(self.iface)
 
         # Declare instance attributes
         self.actions = []
