@@ -89,6 +89,8 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
         QtCore.QObject.connect(self.startPushButton,QtCore.SIGNAL("clicked(bool)"),self.startProcess)
         QtCore.QObject.connect(self.finishPushButton,QtCore.SIGNAL("clicked(bool)"),self.finishProcess)
         QtCore.QObject.connect(self.savePointPushButton,QtCore.SIGNAL("clicked(bool)"),self.savePoint)
+        self.pointNumbers = []
+        self.antennaHeight = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_ANTENNA_HEIGHT_DEFAULT_VALUE
 
     def activateGeoid(self):
         if self.geoidCheckBox.isChecked():
@@ -133,9 +135,12 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
                                                 self.codeFieldCheckBox.isChecked(),
                                                 self.heightFieldCheckBox.isChecked(),
                                                 self.geoidCheckBox.isChecked(),
-                                                self.geoidComboBox.currentText())
+                                                self.geoidComboBox.currentText(),
+                                                self.pointNumbers,
+                                                self.antennaHeight)
         dlg.show() # show the dialog
         result = dlg.exec_() # Run the dialog
+        self.antennaHeight = dlg.getAntennaHeight()
 
     def selectCrs(self):
         projSelector = QgsGenericProjectionSelector()
