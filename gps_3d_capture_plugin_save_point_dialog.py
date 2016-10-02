@@ -103,7 +103,17 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
         QtCore.QObject.connect(self.numberPushButton,QtCore.SIGNAL("clicked(bool)"),self.selectNumber)
         QtCore.QObject.connect(self.codePushButton, QtCore.SIGNAL("clicked(bool)"), self.selectCode)
         QtCore.QObject.connect(self.heightAntennaPushButton,QtCore.SIGNAL("clicked(bool)"),self.selectAntennaHeight)
+        self.buttonBox.accepted.connect(self.selectAccept)
+        #self.buttonBox.rejected.connect(self.selectReject)
         # QtCore.QObject.connect(self.namePushButton,QtCore.SIGNAL("clicked(bool)"),self.selectName)
+
+    def selectAccept(self):
+        msgBox=QMessageBox(self)
+        msgBox.setIcon(QMessageBox.Information)
+        msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+        msgBox.setText("Accept button")
+        msgBox.exec_()
+        self.accept()
 
     def selectCode(self):
         oldText = self.codeLineEdit.text()
