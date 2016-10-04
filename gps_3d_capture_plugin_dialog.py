@@ -120,6 +120,7 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
         qgisDir.cdUp()
         qgisPath=qgisDir.absolutePath()
         shareDir=QDir(qgisPath+constants.CONST_GPS_3D_CAPTURE_PLUGIN_GEOIDS_RELATIVE_PATH)
+        self.GeoidsPath = qgisPath+constants.CONST_GPS_3D_CAPTURE_PLUGIN_GEOIDS_RELATIVE_PATH
         geoidFileNames = shareDir.entryList([constants.CONST_GPS_3D_CAPTURE_PLUGIN_GEOIDS_FILTER_1], QtCore.QDir.Files) #,QtCore.QDir.Name)
         for geoidFileName in geoidFileNames:
             geoidFileInfo=QFileInfo(geoidFileName)
@@ -127,6 +128,10 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
 
     def savePoint(self):
         fileName=self.csvFileLineEdit.text()
+        geoidFileName = ""
+        if self.geoidCheckBox.isChecked():
+            geoidFileBasename = self.geoidComboBox.currentText()
+            geoidFileName = self.GeoidsPath + "/" + geoidFileBasename + constants.CONST_GPS_3D_CAPTURE_PLUGIN_GEOIDS_FILE_EXTENSION
         dlg = GPS3DCapturePluginSavePointDialog(self.iface,
                                                 fileName,
                                                 self.crs,
@@ -135,7 +140,7 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
                                                 self.codeFieldCheckBox.isChecked(),
                                                 self.heightFieldCheckBox.isChecked(),
                                                 self.geoidCheckBox.isChecked(),
-                                                self.geoidComboBox.currentText(),
+                                                geoidFileName,
                                                 self.pointNumbers,
                                                 self.antennaHeight)
         isValidDlg = dlg.isValid

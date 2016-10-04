@@ -153,6 +153,17 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
             geoidModelPath = geoidModelFileInfo.filePath()
             geoidModelBaseName = geoidModelFileInfo.baseName()
             self.geoidModel = QgsRasterLayer(geoidModelPath, geoidModelBaseName)
+            self.crsGeoidModel = self.geoidModel.crs()
+            if not self.crsGeoidModel.isValid():
+                msgBox=QMessageBox(self)
+                msgBox.setIcon(QMessageBox.Information)
+                msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+                msgBox.setText("Error getting Geoid Model CRS:\n"+self.geoidModelFileName)
+                msgBox.exec_()
+                self.isValid = False
+                return
+            self.crsOperationFromGpsToGeoid = QgsCoordinateTransform(self.crsGps,self.crsGeoidModel)
+
         #self.buttonBox.rejected.connect(self.selectReject)
         # QtCore.QObject.connect(self.namePushButton,QtCore.SIGNAL("clicked(bool)"),self.selectName)
 
@@ -202,22 +213,41 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
         else:
             strFirstCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_EASTING_PRECISION.format(firstCoordinate)
             strSecondCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_NORTHING_PRECISION.format(secondCoordinate)
-        self.firstCoordinateLineEdit.setText(strFirstCoordinate)
-        self.secondCoordinateLineEdit.setText(strSecondCoordinate)
         csvTextStream<<strFirstCoordinate<<","
         csvTextStream<<strSecondCoordinate
+        antennaHeight = float(self.heightAntennaLineEdit.text())
         if self.existsFieldHeight:
             height = GPSInfo.elevation
-            strHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_PRECISION.format(height)
-            self.heightGpsLineEdit.setText(strHeight)
-            csvTextStream<<","<<strHeight
+            height = height - antennaHeight
             if self.useGeoidModel:
-                geoidHeight = 50.0
-                strGeoidHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_GEOID_HEIGHT_PRECISION.format(geoidHeight)
-                heightFromGeoid = height - geoidHeight
-                strHeightFromGeoid = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_FROM_GEOID_PRECISION.format(geoidHeight)
-                self.heightGeoidLineEdit.setText(strGeoidHeight)
-                self.heightFromGeoidLineEdit.settText(strHeightFromGeoid)
+                geoidFirstCoordinate = GPSInfo.longitude
+                geoidSecondCoordinate = GPSInfo.latitude
+                geoidPoint = QgsPoint(geoidFirstCoordinate,geoidSecondCoordinate)
+                geoidPoint = self.crsOperationFromGpsToGeoid.transform(geoidPoint)
+                geoidHeight = 0.0
+                if self.geoidModel.extent().contains(geoidPoint):
+                    ident = self.geoidModel.dataProvider().identify(geoidPoint,
+                                                   QgsRaster.IdentifyFormatValue)
+                    if ident.isValid():
+                        values = ident.results()
+                        geoidHeight = values[1]
+                    else:
+                        msgBox=QMessageBox(self)
+                        msgBox.setIcon(QMessageBox.Information)
+                        msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+                        msgBox.setText("Error getting value in Geoid Model:\n",self.geoidModelFileName)
+                        msgBox.exec_()
+                        return
+                else:
+                        msgBox=QMessageBox(self)
+                        msgBox.setIcon(QMessageBox.Information)
+                        msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+                        msgBox.setText("Point out of Geoid Model extension:\n",self.geoidModelFileName)
+                        msgBox.exec_()
+                        return
+                height = height - geoidHeight
+            strHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_PRECISION.format(height)
+            csvTextStream<<","<<strHeight
         if self.existsFieldCode:
             code = self.codeLineEdit.text()
             csvTextStream<<","<<code
@@ -332,12 +362,34 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
             strHeightGround = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_PRECISION.format(heightGround)
             self.heightGroundLineEdit.setText(strHeightGround)
             if self.useGeoidModel:
-                geoidFirstCoordinate = firstCoordinate
-                geoidSecondCoordinate = secondCoordinate
+                geoidFirstCoordinate = GPSInfo.longitude
+                geoidSecondCoordinate = GPSInfo.latitude
                 geoidPoint = QgsPoint(geoidFirstCoordinate,geoidSecondCoordinate)
-                geoidHeight = self.geoidModel.geodataProvider().identify(geoidPoint,QgsRaster.IdentifyFormatValue)
+                geoidPoint = self.crsOperationFromGpsToGeoid.transform(geoidPoint)
+                geoidHeight = 0.0
+                if self.geoidModel.extent().contains(geoidPoint):
+                    ident = self.geoidModel.dataProvider().identify(geoidPoint,
+                                                   QgsRaster.IdentifyFormatValue)
+                    if ident.isValid():
+                        values = ident.results()
+                        geoidHeight = values[1]
+                    else:
+                        msgBox=QMessageBox(self)
+                        msgBox.setIcon(QMessageBox.Information)
+                        msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+                        msgBox.setText("Error getting value in Geoid Model:\n",self.geoidModelFileName)
+                        msgBox.exec_()
+                        return
+                else:
+                        msgBox=QMessageBox(self)
+                        msgBox.setIcon(QMessageBox.Information)
+                        msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+                        msgBox.setText("Point out of Geoid Model extension:\n",self.geoidModelFileName)
+                        msgBox.exec_()
+                        return
                 strGeoidHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_GEOID_HEIGHT_PRECISION.format(geoidHeight)
                 heightFromGeoid = height - geoidHeight
-                strHeightFromGeoid = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_FROM_GEOID_PRECISION.format(geoidHeight)
+                strHeightFromGeoid = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_FROM_GEOID_PRECISION.format(heightFromGeoid)
                 self.heightGeoidLineEdit.setText(strGeoidHeight)
-                self.heightFromGeoidLineEdit.settText(strHeightFromGeoid)
+                self.heightFromGeoidLineEdit.setText(strHeightFromGeoid)
+
