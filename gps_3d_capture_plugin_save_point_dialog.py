@@ -5,7 +5,14 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4 import QtCore, uic
 from qgis.core import *
+from qgis.core import (QgsGPSDetector, QgsGPSConnectionRegistry, QgsPoint, \
+                        QgsCoordinateTransform, QgsCoordinateReferenceSystem, \
+                        QgsGPSInformation)
+from qgis.core import QgsRasterLayer
+from qgis.core import QgsRaster
 from qgis.gui import QgsMessageBar
+import gdal
+from gdalconst import *
 
 import constants
 import re
@@ -61,11 +68,19 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
         self.antennaHeight = antennaHeight
         self.num_format = re.compile(r'^\-?[1-9][0-9]*\.?[0-9]*')
         self.initialize()
+        self.updatePosition()
 
     def getAntennaHeight(self):
         return self.antennaHeight
 
     def initialize(self):
+        self.isValid = True
+        if self.crs.geographicFlag():
+           self.firstCoordinateLabel.setText("Longitude")
+           self.secondCoordinateLabel.setText("Latitude")
+        else:
+           self.firstCoordinateLabel.setText("Easting")
+           self.secondCoordinateLabel.setText("Northing")
         if not self.existsFieldName:
             self.namePushButton.setVisible(False)
             self.nameLineEdit.setVisible(False)
@@ -103,16 +118,110 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
         QtCore.QObject.connect(self.numberPushButton,QtCore.SIGNAL("clicked(bool)"),self.selectNumber)
         QtCore.QObject.connect(self.codePushButton, QtCore.SIGNAL("clicked(bool)"), self.selectCode)
         QtCore.QObject.connect(self.heightAntennaPushButton,QtCore.SIGNAL("clicked(bool)"),self.selectAntennaHeight)
+        QtCore.QObject.connect(self.updatePositionPushButton,QtCore.SIGNAL("clicked(bool)"),self.updatePosition)
         self.buttonBox.accepted.connect(self.selectAccept)
+        epsgCodeGps = constants.CONST_GPS_3D_CAPTURE_PLUGIN_EPSG_CODE_GPS
+        self.crsGps = QgsCoordinateReferenceSystem(epsgCodeGps)
+        if not self.crsGps.isValid():
+            msgBox=QMessageBox(self)
+            msgBox.setIcon(QMessageBox.Information)
+            msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+            msgBox.setText("Error creating CRS by EPSG Code: "+str(epsgCodeGps))
+            msgBox.exec_()
+            self.isValid = False
+            return
+        self.crsOperationFromGps = QgsCoordinateTransform(self.crsGps,self.crs)
+        if self.useGeoidModel:
+            if not QFile.exists(self.geoidModelFileName):
+                msgBox=QMessageBox(self)
+                msgBox.setIcon(QMessageBox.Information)
+                msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+                msgBox.setText("Geoid Model file not exists:\n"+self.geoidModelFileName)
+                msgBox.exec_()
+                self.isValid = False
+                return
+            # self.geoidDataset = gdal.Open( self.geoidModelFileName, GA_ReadOnly )
+            # if self.geoidDataset is None:
+            #     msgBox=QMessageBox(self)
+            #     msgBox.setIcon(QMessageBox.Information)
+            #     msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+            #     msgBox.setText("Error opening Geoid Model file:\n"+self.geoidModelFileName)
+            #     msgBox.exec_()
+            #     self.isValid = False
+            #     return
+            geoidModelFileInfo = QFileInfo(self.geoidModelFileName)
+            geoidModelPath = geoidModelFileInfo.filePath()
+            geoidModelBaseName = geoidModelFileInfo.baseName()
+            self.geoidModel = QgsRasterLayer(geoidModelPath, geoidModelBaseName)
         #self.buttonBox.rejected.connect(self.selectReject)
         # QtCore.QObject.connect(self.namePushButton,QtCore.SIGNAL("clicked(bool)"),self.selectName)
 
+    def isValid(self):
+        return self.isValid
+
     def selectAccept(self):
-        msgBox=QMessageBox(self)
-        msgBox.setIcon(QMessageBox.Information)
-        msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
-        msgBox.setText("Accept button")
-        msgBox.exec_()
+        # msgBox=QMessageBox(self)
+        # msgBox.setIcon(QMessageBox.Information)
+        # msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+        # msgBox.setText("Accept button")
+        # msgBox.exec_()
+        connectionRegistry = QgsGPSConnectionRegistry().instance()
+        connectionList = connectionRegistry.connectionList()
+        if connectionList == []:
+            msgBox=QMessageBox(self)
+            msgBox.setIcon(QMessageBox.Information)
+            msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+            msgBox.setText("GPS connection not detected.\nConnect a GPS and try again")
+            msgBox.exec_()
+            return
+        csvFile=QFile(self.fileName)
+        if not csvFile.open(QIODevice.Append | QIODevice.Text):
+            msgBox=QMessageBox(self)
+            msgBox.setIcon(QMessageBox.Information)
+            msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+            msgBox.setText("Error opening for writting file:\n"+self.fileName)
+            msgBox.exec_()
+            return
+        csvTextStream = QTextStream(csvFile)
+        csvTextStream<<"\n"
+        if self.existsFieldName:
+            name = self.nameLineEdit.text()
+            csvTextStream<<name<<","
+        number = self.numberLineEdit.text()
+        csvTextStream<<number<<","
+        GPSInfo = connectionList[0].currentGPSInformation()
+        firstCoordinate = GPSInfo.longitude
+        secondCoordinate = GPSInfo.latitude
+        pointCrsGps = QgsPoint(firstCoordinate,secondCoordinate)
+        pointCrs = self.crsOperationFromGps.transform(pointCrsGps)
+        firstCoordinate = pointCrs.x()
+        secondCoordinate = pointCrs.y()
+        if self.crs.geographicFlag():
+            strFirstCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_LONGITUDE_PRECISION.format(firstCoordinate)
+            strSecondCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_LATITUDE_PRECISION.format(secondCoordinate)
+        else:
+            strFirstCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_EASTING_PRECISION.format(firstCoordinate)
+            strSecondCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_NORTHING_PRECISION.format(secondCoordinate)
+        self.firstCoordinateLineEdit.setText(strFirstCoordinate)
+        self.secondCoordinateLineEdit.setText(strSecondCoordinate)
+        csvTextStream<<strFirstCoordinate<<","
+        csvTextStream<<strSecondCoordinate
+        if self.existsFieldHeight:
+            height = GPSInfo.elevation
+            strHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_PRECISION.format(height)
+            self.heightGpsLineEdit.setText(strHeight)
+            csvTextStream<<","<<strHeight
+            if self.useGeoidModel:
+                geoidHeight = 50.0
+                strGeoidHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_GEOID_HEIGHT_PRECISION.format(geoidHeight)
+                heightFromGeoid = height - geoidHeight
+                strHeightFromGeoid = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_FROM_GEOID_PRECISION.format(geoidHeight)
+                self.heightGeoidLineEdit.setText(strGeoidHeight)
+                self.heightFromGeoidLineEdit.settText(strHeightFromGeoid)
+        if self.existsFieldCode:
+            code = self.codeLineEdit.text()
+            csvTextStream<<","<<code
+        csvFile.close()
         self.accept()
 
     def selectCode(self):
@@ -146,6 +255,7 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
                 if ok:
                     strValue=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_ANTENNA_HEIGHT_PRECISION.format(value)
                     self.heightAntennaLineEdit.setText(strValue)
+                    self.updatePosition()
                     # self.settings.setValue("documents/geoFtpIp",text)
             else:
                 if not ok:
@@ -187,3 +297,47 @@ class GPS3DCapturePluginSavePointDialog(QDialog, FORM_CLASS):
             else:
                 if not ok:
                     ok = True
+
+    def updatePosition(self):
+        connectionRegistry = QgsGPSConnectionRegistry().instance()
+        connectionList = connectionRegistry.connectionList()
+        if connectionList == []:
+            msgBox=QMessageBox(self)
+            msgBox.setIcon(QMessageBox.Information)
+            msgBox.setWindowTitle(constants.CONST_GPS_3D_CAPTURE_PLUGIN_WINDOW_TITLE)
+            msgBox.setText("GPS connection not detected.\nConnect a GPS and try again")
+            msgBox.exec_()
+            return
+        GPSInfo = connectionList[0].currentGPSInformation()
+        firstCoordinate = GPSInfo.longitude
+        secondCoordinate = GPSInfo.latitude
+        pointCrsGps = QgsPoint(firstCoordinate,secondCoordinate)
+        pointCrs = self.crsOperationFromGps.transform(pointCrsGps)
+        firstCoordinate = pointCrs.x()
+        secondCoordinate = pointCrs.y()
+        if self.crs.geographicFlag():
+            strFirstCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_LONGITUDE_PRECISION.format(firstCoordinate)
+            strSecondCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_LATITUDE_PRECISION.format(secondCoordinate)
+        else:
+            strFirstCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_EASTING_PRECISION.format(firstCoordinate)
+            strSecondCoordinate = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_NORTHING_PRECISION.format(secondCoordinate)
+        self.firstCoordinateLineEdit.setText(strFirstCoordinate)
+        self.secondCoordinateLineEdit.setText(strSecondCoordinate)
+        antennaHeight = float(self.heightAntennaLineEdit.text())
+        if self.existsFieldHeight:
+            height = GPSInfo.elevation
+            heightGround = height - antennaHeight
+            strHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_PRECISION.format(height)
+            self.heightGpsLineEdit.setText(strHeight)
+            strHeightGround = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_PRECISION.format(heightGround)
+            self.heightGroundLineEdit.setText(strHeightGround)
+            if self.useGeoidModel:
+                geoidFirstCoordinate = firstCoordinate
+                geoidSecondCoordinate = secondCoordinate
+                geoidPoint = QgsPoint(geoidFirstCoordinate,geoidSecondCoordinate)
+                geoidHeight = self.geoidModel.geodataProvider().identify(geoidPoint,QgsRaster.IdentifyFormatValue)
+                strGeoidHeight=constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_GEOID_HEIGHT_PRECISION.format(geoidHeight)
+                heightFromGeoid = height - geoidHeight
+                strHeightFromGeoid = constants.CONST_GPS_3D_CAPTURE_PLUGIN_SAVE_POINT_HEIGHT_FROM_GEOID_PRECISION.format(geoidHeight)
+                self.heightGeoidLineEdit.setText(strGeoidHeight)
+                self.heightFromGeoidLineEdit.settText(strHeightFromGeoid)

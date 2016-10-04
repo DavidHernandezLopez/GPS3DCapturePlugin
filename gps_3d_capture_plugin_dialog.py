@@ -138,6 +138,9 @@ class GPS3DCapturePluginDialog(QtGui.QDialog, FORM_CLASS):
                                                 self.geoidComboBox.currentText(),
                                                 self.pointNumbers,
                                                 self.antennaHeight)
+        isValidDlg = dlg.isValid
+        if not isValidDlg:
+            return
         dlg.show() # show the dialog
         result = dlg.exec_() # Run the dialog
         self.antennaHeight = dlg.getAntennaHeight()
